@@ -289,10 +289,10 @@ if __name__ == '__main__':
     plot_y_lim_half = DEFAULT_PLOT_Y_LIM_HALF
     
     initial_translations = [
-        (-7.5, -2.7),
-        (7.5, 1.0),
-        (7.5, -2.7),
-        (-7.5, 1.0)
+        (-7.5, -2.7+0.5),
+        (7.5, 1.0+0.5),
+        (7.5, -2.7+0.5),
+        (-7.5, 1.0+0.5)
     ]
     sensor_colors = DEFAULT_SENSOR_COLORS
     
