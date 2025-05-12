@@ -234,7 +234,7 @@ DEFAULT_SENSOR_COLORS = ['red', 'green', 'blue', 'purple']
 
 # Calculate default plot limits (consistent with original script logic)
 # The key idea was that 15 units of world space map to the canvas width.
-UNITS_TO_COVER_WIDTH = 15.0
+UNITS_TO_COVER_WIDTH = 6.7*2
 DEFAULT_PLOT_X_LIM_HALF = UNITS_TO_COVER_WIDTH / 2.0
 DEFAULT_PLOT_Y_LIM_HALF = (DEFAULT_CANVAS_HEIGHT_PX * (UNITS_TO_COVER_WIDTH / DEFAULT_CANVAS_WIDTH_PX)) / 2.0
 
