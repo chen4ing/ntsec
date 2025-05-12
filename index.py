@@ -6,6 +6,7 @@ import numpy as np
 import os
 import multiprocessing
 from functools import partial
+import imageio # Added for video creation
 # ... any other existing imports ...
 
 def parse_data_file(input_path, output_path):
@@ -77,96 +78,152 @@ def parse_data_file(input_path, output_path):
         frame_angle.append(var_angle_frame)
 
     total_frames = len(frame_radius)
-    print(f"Total number of frames: {total_frames}")
+    # Suppress print for CLI video generation, can be re-enabled if needed for GUI
+    # print(f"Total number of frames: {total_frames}")
 
     return frame_radius, frame_angle
 
 # MODIFIED process_chan_file:
 # - Takes output_dir_png as an argument.
 # - Generates filename including translation parameters.
-# - Returns the path of the generated PNG.
+# - Returns the path of the generated PNG or a list of image arrays for video.
+# - Added 'mode' argument: 'png' or 'video_frames'
 def process_chan_file(filename, 
                       input_dir, 
-                      output_dir_png, # GUI will specify this
+                      output_dir, # Generic output directory
                       canvas_w_px, 
                       canvas_h_px, 
                       plot_x_half, 
                       plot_y_half, 
-                      sensor_trans, # This is the translations from GUI
+                      sensor_trans, 
                       colors_sensor,
-                      fixed_dpi):
+                      fixed_dpi,
+                      mode='png'): # 'png' or 'video_frames'
     
     current_input_path = os.path.join(input_dir, filename)
-    print(f"Processing file: {current_input_path} with translations: {sensor_trans}")
+    # Suppress print for CLI video generation
+    # print(f"Processing file: {current_input_path} with translations: {sensor_trans}")
 
     all_frames_radii, all_frames_angles = parse_data_file(current_input_path, 'dummy.html')
 
     if not all_frames_radii or not any(any(sensor_data for sensor_data in frame_data) for frame_data in all_frames_radii):
         print(f"No data to plot for {filename}.")
-        return None # Return None if no data
+        return None 
 
-    os.makedirs(output_dir_png, exist_ok=True)
-
-    fig, ax = plt.subplots(figsize=(canvas_w_px / fixed_dpi, canvas_h_px / fixed_dpi), dpi=fixed_dpi)
-    fig.patch.set_facecolor('white')
-
-    for frame_idx in range(len(all_frames_radii)):
-        current_frame_radii_data = all_frames_radii[frame_idx]
-        current_frame_angles_data = all_frames_angles[frame_idx]
-
-        for sensor_idx in range(4):
-            sensor_global_x_coords = []
-            sensor_global_y_coords = []
-
-            if sensor_idx < len(current_frame_radii_data) and \
-               current_frame_radii_data[sensor_idx] and \
-               sensor_idx < len(current_frame_angles_data) and \
-               current_frame_angles_data[sensor_idx]:
-                
-                radii_for_sensor = current_frame_radii_data[sensor_idx]
-                angles_deg_for_sensor = current_frame_angles_data[sensor_idx]
-                
-                tx, ty = sensor_trans[sensor_idx]
-
-                for r, angle_deg in zip(radii_for_sensor, angles_deg_for_sensor):
-                    if r <= 15.0:
-                        angle_rad = np.deg2rad(angle_deg)
-                        x_local = r * np.sin(angle_rad) 
-                        y_local = r * np.cos(angle_rad)
-                        x_global = x_local + tx
-                        y_global = y_local + ty
-                        sensor_global_x_coords.append(x_global)
-                        sensor_global_y_coords.append(y_global)
-            
-            if sensor_global_x_coords and sensor_global_y_coords:
-                ax.scatter(sensor_global_x_coords, sensor_global_y_coords, s=1, color=colors_sensor[sensor_idx], marker='.')
-    
-    ax.set_xlim(-plot_x_half, plot_x_half)
-    ax.set_ylim(-plot_y_half, plot_y_half)
-    ax.axis('off') 
-    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+    os.makedirs(output_dir, exist_ok=True)
 
     base_filename = os.path.splitext(filename)[0]
     
     trans_str_parts = []
     for t_pair in sensor_trans:
-        # Format to 2 decimal places, replace '.' with 'p' (point), '-' with 'm' (minus)
         trans_str_parts.append(f"{t_pair[0]:.2f}".replace('.', 'p').replace('-', 'm'))
         trans_str_parts.append(f"{t_pair[1]:.2f}".replace('.', 'p').replace('-', 'm'))
     trans_filename_part = "_".join(trans_str_parts)
 
-    output_png_filename = os.path.join(output_dir_png, f'{base_filename}_params_{trans_filename_part}_canvas.png')
+    if mode == 'png':
+        fig, ax = plt.subplots(figsize=(canvas_w_px / fixed_dpi, canvas_h_px / fixed_dpi), dpi=fixed_dpi)
+        fig.patch.set_facecolor('white')
+
+        for frame_idx in range(len(all_frames_radii)):
+            current_frame_radii_data = all_frames_radii[frame_idx]
+            current_frame_angles_data = all_frames_angles[frame_idx]
+
+            for sensor_idx in range(4):
+                sensor_global_x_coords = []
+                sensor_global_y_coords = []
+
+                if sensor_idx < len(current_frame_radii_data) and \
+                   current_frame_radii_data[sensor_idx] and \
+                   sensor_idx < len(current_frame_angles_data) and \
+                   current_frame_angles_data[sensor_idx]:
+                
+                    radii_for_sensor = current_frame_radii_data[sensor_idx]
+                    angles_deg_for_sensor = current_frame_angles_data[sensor_idx]
+                    tx, ty = sensor_trans[sensor_idx]
+
+                    for r, angle_deg in zip(radii_for_sensor, angles_deg_for_sensor):
+                        if r <= 15.0:
+                            angle_rad = np.deg2rad(angle_deg)
+                            x_local = r * np.sin(angle_rad) 
+                            y_local = r * np.cos(angle_rad)
+                            x_global = x_local + tx
+                            y_global = y_local + ty
+                            sensor_global_x_coords.append(x_global)
+                            sensor_global_y_coords.append(y_global)
+            
+            if sensor_global_x_coords and sensor_global_y_coords:
+                ax.scatter(sensor_global_x_coords, sensor_global_y_coords, s=1, color=colors_sensor[sensor_idx], marker='.')
     
-    try:
-        plt.savefig(output_png_filename, dpi=fixed_dpi, facecolor=fig.get_facecolor()) 
-        print(f"Canvas plot saved to {output_png_filename}")
-    except Exception as e:
-        print(f"Error saving plot {output_png_filename}: {e}")
+        ax.set_xlim(-plot_x_half, plot_x_half)
+        ax.set_ylim(-plot_y_half, plot_y_half)
+        ax.axis('off') 
+        plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+        
+        output_png_filename = os.path.join(output_dir, f'{base_filename}_params_{trans_filename_part}_canvas.png')
+        
+        try:
+            plt.savefig(output_png_filename, dpi=fixed_dpi, facecolor=fig.get_facecolor()) 
+            print(f"Canvas plot saved to {output_png_filename}")
+        except Exception as e:
+            print(f"Error saving plot {output_png_filename}: {e}")
+            plt.close(fig)
+            return None
+        
         plt.close(fig)
-        return None # Indicate failure
+        return output_png_filename
     
-    plt.close(fig)
-    return output_png_filename
+    elif mode == 'video_frames':
+        image_frames = []
+        total_data_frames = len(all_frames_radii)
+        print(f"Generating {total_data_frames} frames for video from {filename}...")
+
+        for frame_idx in range(total_data_frames):
+            fig, ax = plt.subplots(figsize=(canvas_w_px / fixed_dpi, canvas_h_px / fixed_dpi), dpi=fixed_dpi)
+            fig.patch.set_facecolor('white')
+            
+            current_frame_radii_data = all_frames_radii[frame_idx]
+            current_frame_angles_data = all_frames_angles[frame_idx]
+
+            for sensor_idx in range(4):
+                sensor_global_x_coords = []
+                sensor_global_y_coords = []
+                if sensor_idx < len(current_frame_radii_data) and \
+                   current_frame_radii_data[sensor_idx] and \
+                   sensor_idx < len(current_frame_angles_data) and \
+                   current_frame_angles_data[sensor_idx]:
+                    
+                    radii_for_sensor = current_frame_radii_data[sensor_idx]
+                    angles_deg_for_sensor = current_frame_angles_data[sensor_idx]
+                    tx, ty = sensor_trans[sensor_idx]
+
+                    for r, angle_deg in zip(radii_for_sensor, angles_deg_for_sensor):
+                        if r <= 15.0:
+                            angle_rad = np.deg2rad(angle_deg)
+                            x_local = r * np.sin(angle_rad) 
+                            y_local = r * np.cos(angle_rad)
+                            x_global = x_local + tx
+                            y_global = y_local + ty
+                            sensor_global_x_coords.append(x_global)
+                            sensor_global_y_coords.append(y_global)
+                    
+                    if sensor_global_x_coords and sensor_global_y_coords:
+                        ax.scatter(sensor_global_x_coords, sensor_global_y_coords, s=1, color=colors_sensor[sensor_idx], marker='.')
+            
+            ax.set_xlim(-plot_x_half, plot_x_half)
+            ax.set_ylim(-plot_y_half, plot_y_half)
+            ax.axis('off')
+            plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+            
+            fig.canvas.draw()
+            image = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+            image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            image_frames.append(image)
+            plt.close(fig)
+            
+            # Progress indicator
+            print(f"  Processed frame {frame_idx + 1}/{total_data_frames}", end='\\r')
+        print("\\nVideo frames generated.")
+        return image_frames
 
 # --- Add these constants and the new function before your `if __name__ == '__main__':` block ---
 
@@ -248,17 +305,19 @@ def run_processing_for_gui(translations, selected_file_option, output_directory,
 
     last_image_path = None
     for chan_file_name in files_to_process:
+        # GUI always generates PNGs (overlay)
         current_image_path = process_chan_file(
             filename=chan_file_name,
             input_dir=input_directory,
-            output_dir_png=output_directory,
+            output_dir=output_directory, # output_directory is output_dir_png for GUI
             canvas_w_px=canvas_w_px,
             canvas_h_px=canvas_h_px,
             plot_x_half=plot_x_half,
             plot_y_half=plot_y_half,
             sensor_trans=translations,
             colors_sensor=sensor_colors,
-            fixed_dpi=fixed_dpi
+            fixed_dpi=fixed_dpi,
+            mode='png' 
         )
         if current_image_path:
             last_image_path = current_image_path
@@ -271,55 +330,67 @@ def run_processing_for_gui(translations, selected_file_option, output_directory,
             
     return last_image_path
 
+def create_video_from_frames(image_frames, output_video_path, fps=10):
+    """
+    Creates a video from a list of image frames.
+    """
+    if not image_frames:
+        print("No frames to create video.")
+        return None
+    
+    try:
+        with imageio.get_writer(output_video_path, fps=fps) as writer:
+            for frame in image_frames:
+                writer.append_data(frame)
+        print(f"Video saved to {output_video_path}")
+        return output_video_path
+    except Exception as e:
+        print(f"Error creating video {output_video_path}: {e}")
+        return None
+
 # --- Your existing `if __name__ == '__main__':` block ---
-# Ensure it uses the new constants and potentially the modified process_chan_file signature
-# if you want its direct execution to also benefit from new filename format.
+# This block will now be minimal, as CLI logic moves to cli.py
+# It can be used for testing or if you still want a default direct run behavior
+# without CLI arguments.
 
 if __name__ == '__main__':
-    input_directory = '.' 
-    output_png_directory = 'output_pngs_canvas' 
-    os.makedirs(output_png_directory, exist_ok=True)
+    # This part is mostly for legacy direct execution or simple testing.
+    # For CLI functionality, use cli.py
+    print("Running index.py directly. This is for basic testing or legacy use.")
+    print("For CLI options (-p, -v), please run cli.py.")
 
-    canvas_width_px = DEFAULT_CANVAS_WIDTH_PX
-    canvas_height_px = DEFAULT_CANVAS_HEIGHT_PX
-    dpi = DEFAULT_DPI
-    
-    # Use the globally defined plot limits
-    plot_x_lim_half = DEFAULT_PLOT_X_LIM_HALF
-    plot_y_lim_half = DEFAULT_PLOT_Y_LIM_HALF
-    
-    initial_translations = [
-        (-7.5, -2.7+0.5),
-        (7.5, 1.0+0.5),
-        (7.5, -2.7+0.5),
-        (-7.5, 1.0+0.5)
+    # Example: Process the first .chan file found into a PNG in a default directory
+    input_dir = '.'
+    output_png_dir = 'output_pngs_canvas_direct_run'
+    os.makedirs(output_png_dir, exist_ok=True)
+
+    default_translations = [
+        (-7.5, -2.7+0.7), (7.5, 1.0+0.7),
+        (7.5, -2.7+0.7), (-7.5, 1.0+0.7)
     ]
-    sensor_colors = DEFAULT_SENSOR_COLORS
     
-    chan_files = [f for f in os.listdir(input_directory) if f.endswith(".chan")]
-    chan_files.sort()
+    try:
+        chan_files = [f for f in os.listdir(input_dir) if f.endswith(".chan")]
+        chan_files.sort()
+        if chan_files:
+            first_file = chan_files[0]
+            print(f"Processing first file found: {first_file} as an example.")
+            process_chan_file(
+                filename=first_file,
+                input_dir=input_dir,
+                output_dir=output_png_dir,
+                canvas_w_px=DEFAULT_CANVAS_WIDTH_PX,
+                canvas_h_px=DEFAULT_CANVAS_HEIGHT_PX,
+                plot_x_half=DEFAULT_PLOT_X_LIM_HALF,
+                plot_y_half=DEFAULT_PLOT_Y_LIM_HALF,
+                sensor_trans=default_translations,
+                colors_sensor=DEFAULT_SENSOR_COLORS,
+                fixed_dpi=DEFAULT_DPI,
+                mode='png'
+            )
+        else:
+            print("No .chan files found in the current directory for direct run example.")
+    except Exception as e:
+        print(f"Error during direct run: {e}")
 
-    if not chan_files:
-        print("No .chan files found in the input directory.")
-    else:
-        worker_partial = partial(process_chan_file,
-                                 input_dir=input_directory,
-                                 output_dir_png=output_png_directory, # CLI uses its own output dir
-                                 canvas_w_px=canvas_width_px,
-                                 canvas_h_px=canvas_height_px,
-                                 plot_x_half=plot_x_lim_half,
-                                 plot_y_half=plot_y_lim_half,
-                                 sensor_trans=initial_translations, # CLI uses initial translations
-                                 colors_sensor=sensor_colors,
-                                 fixed_dpi=dpi)
-        
-        num_processes_to_use = multiprocessing.cpu_count()
-        print(f"Starting parallel processing of {len(chan_files)} files using up to {num_processes_to_use} processes...")
-
-        with multiprocessing.Pool(processes=num_processes_to_use) as pool:
-            results = pool.map(worker_partial, chan_files)
-        
-        processed_count = sum(1 for r in results if r is not None)
-        print(f"Processing complete. {processed_count}/{len(chan_files)} files generated images.")
-
-    print("Original script execution finished.")
+    print("Direct execution of index.py finished.")
