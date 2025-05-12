@@ -1,3 +1,13 @@
+# index.py (Additions/Modifications)
+
+# Make sure these imports are present at the top of index.py
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import multiprocessing
+from functools import partial
+# ... any other existing imports ...
+
 def parse_data_file(input_path, output_path):
     var_radius = [[] for _ in range(4)]
     var_angle = [[] for _ in range(4)]
@@ -71,33 +81,31 @@ def parse_data_file(input_path, output_path):
 
     return frame_radius, frame_angle
 
-# Import necessary libraries for plotting and file operations
-import matplotlib.pyplot as plt
-import numpy as np
-import os
-import multiprocessing
-from functools import partial
-
-# Worker function for processing a single .chan file
+# MODIFIED process_chan_file:
+# - Takes output_dir_png as an argument.
+# - Generates filename including translation parameters.
+# - Returns the path of the generated PNG.
 def process_chan_file(filename, 
                       input_dir, 
-                      output_dir_png, 
+                      output_dir_png, # GUI will specify this
                       canvas_w_px, 
                       canvas_h_px, 
                       plot_x_half, 
                       plot_y_half, 
-                      sensor_trans, 
+                      sensor_trans, # This is the translations from GUI
                       colors_sensor,
                       fixed_dpi):
     
     current_input_path = os.path.join(input_dir, filename)
-    print(f"Processing file: {current_input_path}")
+    print(f"Processing file: {current_input_path} with translations: {sensor_trans}")
 
     all_frames_radii, all_frames_angles = parse_data_file(current_input_path, 'dummy.html')
 
-    if not all_frames_radii:
+    if not all_frames_radii or not any(any(sensor_data for sensor_data in frame_data) for frame_data in all_frames_radii):
         print(f"No data to plot for {filename}.")
-        return
+        return None # Return None if no data
+
+    os.makedirs(output_dir_png, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(canvas_w_px / fixed_dpi, canvas_h_px / fixed_dpi), dpi=fixed_dpi)
     fig.patch.set_facecolor('white')
@@ -139,51 +147,147 @@ def process_chan_file(filename,
     plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
 
     base_filename = os.path.splitext(filename)[0]
-    output_png_filename = os.path.join(output_dir_png, f'{base_filename}_canvas.png')
     
-    plt.savefig(output_png_filename, dpi=fixed_dpi, facecolor=fig.get_facecolor()) 
-    print(f"Canvas plot saved to {output_png_filename}")
+    trans_str_parts = []
+    for t_pair in sensor_trans:
+        # Format to 2 decimal places, replace '.' with 'p' (point), '-' with 'm' (minus)
+        trans_str_parts.append(f"{t_pair[0]:.2f}".replace('.', 'p').replace('-', 'm'))
+        trans_str_parts.append(f"{t_pair[1]:.2f}".replace('.', 'p').replace('-', 'm'))
+    trans_filename_part = "_".join(trans_str_parts)
+
+    output_png_filename = os.path.join(output_dir_png, f'{base_filename}_params_{trans_filename_part}_canvas.png')
+    
+    try:
+        plt.savefig(output_png_filename, dpi=fixed_dpi, facecolor=fig.get_facecolor()) 
+        print(f"Canvas plot saved to {output_png_filename}")
+    except Exception as e:
+        print(f"Error saving plot {output_png_filename}: {e}")
+        plt.close(fig)
+        return None # Indicate failure
     
     plt.close(fig)
+    return output_png_filename
 
-# Main execution block
+# --- Add these constants and the new function before your `if __name__ == '__main__':` block ---
+
+DEFAULT_CANVAS_WIDTH_PX = 1280
+DEFAULT_CANVAS_HEIGHT_PX = 720
+DEFAULT_DPI = 100
+DEFAULT_SENSOR_COLORS = ['red', 'green', 'blue', 'purple']
+
+# Calculate default plot limits (consistent with original script logic)
+# The key idea was that 15 units of world space map to the canvas width.
+UNITS_TO_COVER_WIDTH = 15.0
+DEFAULT_PLOT_X_LIM_HALF = UNITS_TO_COVER_WIDTH / 2.0
+DEFAULT_PLOT_Y_LIM_HALF = (DEFAULT_CANVAS_HEIGHT_PX * (UNITS_TO_COVER_WIDTH / DEFAULT_CANVAS_WIDTH_PX)) / 2.0
+
+
+def run_processing_for_gui(translations, process_first_file, output_directory, input_directory="."):
+    """
+    Callable function from GUI to process .chan files.
+    Returns path to the generated image, or None.
+    """
+    os.makedirs(output_directory, exist_ok=True)
+
+    canvas_w_px = DEFAULT_CANVAS_WIDTH_PX
+    canvas_h_px = DEFAULT_CANVAS_HEIGHT_PX
+    fixed_dpi = DEFAULT_DPI
+    plot_x_half = DEFAULT_PLOT_X_LIM_HALF
+    plot_y_half = DEFAULT_PLOT_Y_LIM_HALF
+    sensor_colors = DEFAULT_SENSOR_COLORS
+
+    try:
+        chan_files = [f for f in os.listdir(input_directory) if f.endswith(".chan")]
+    except FileNotFoundError:
+        print(f"Error: Input directory not found: {input_directory}")
+        return None
+        
+    if not chan_files:
+        print(f"No .chan files found in the input directory: {os.path.abspath(input_directory)}")
+        return None
+    
+    chan_files.sort() 
+
+    files_to_process = []
+    if process_first_file:
+        if chan_files:
+            files_to_process = chan_files[:1]
+    else:
+        # For GUI, even if "process all" is implied by unchecking,
+        # it's better to process one (e.g., the first) for responsiveness.
+        # The user can run the main script for batch processing.
+        # However, the request was "可選只做第一個chan file", implying "all" is the alternative.
+        # Let's process all sequentially if "process_first_file" is False.
+        # The GUI will display the last image generated in this case.
+        files_to_process = chan_files
+        if len(files_to_process) > 1:
+             print(f"Processing all {len(files_to_process)} files sequentially. GUI will show the last image.")
+
+
+    if not files_to_process:
+        print("No files selected for processing.")
+        return None
+
+    last_image_path = None
+    for chan_file_name in files_to_process:
+        current_image_path = process_chan_file(
+            filename=chan_file_name,
+            input_dir=input_directory,
+            output_dir_png=output_directory,
+            canvas_w_px=canvas_w_px,
+            canvas_h_px=canvas_h_px,
+            plot_x_half=plot_x_half,
+            plot_y_half=plot_y_half,
+            sensor_trans=translations,
+            colors_sensor=sensor_colors,
+            fixed_dpi=fixed_dpi
+        )
+        if current_image_path:
+            last_image_path = current_image_path
+            if process_first_file: # If only first was requested, and we got an image, break.
+                 break 
+            
+    return last_image_path
+
+# --- Your existing `if __name__ == '__main__':` block ---
+# Ensure it uses the new constants and potentially the modified process_chan_file signature
+# if you want its direct execution to also benefit from new filename format.
+
 if __name__ == '__main__':
-    # Define the directory containing the .chan files and the output directory for PNGs
-    input_directory = '.'
-    output_png_directory = 'output_pngs_canvas'
+    input_directory = '.' 
+    output_png_directory = 'output_pngs_canvas' 
     os.makedirs(output_png_directory, exist_ok=True)
 
-    # Canvas dimensions and scaling parameters
-    canvas_width_px = 1280
-    canvas_height_px = 720
-    units_per_pixel = 15.0 / canvas_width_px
-    plot_x_extent = canvas_width_px * units_per_pixel
-    plot_x_lim_half = plot_x_extent / 2.0
-    plot_y_extent = canvas_height_px * units_per_pixel
-    plot_y_lim_half = plot_y_extent / 2.0
-
-    translations = [
-        (-7.5, -5),
+    canvas_width_px = DEFAULT_CANVAS_WIDTH_PX
+    canvas_height_px = DEFAULT_CANVAS_HEIGHT_PX
+    dpi = DEFAULT_DPI
+    
+    # Use the globally defined plot limits
+    plot_x_lim_half = DEFAULT_PLOT_X_LIM_HALF
+    plot_y_lim_half = DEFAULT_PLOT_Y_LIM_HALF
+    
+    initial_translations = [
+        (-7.5, -3.7),
         (7.5, 0.0),
         (7.5, 0.0),
         (-7.5, 0.0)
     ]
-    sensor_colors = ['red', 'green', 'blue', 'purple']
-    dpi = 100 # DPI for plotting
-
+    sensor_colors = DEFAULT_SENSOR_COLORS
+    
     chan_files = [f for f in os.listdir(input_directory) if f.endswith(".chan")]
+    chan_files.sort()
 
     if not chan_files:
         print("No .chan files found in the input directory.")
     else:
         worker_partial = partial(process_chan_file,
                                  input_dir=input_directory,
-                                 output_dir_png=output_png_directory,
+                                 output_dir_png=output_png_directory, # CLI uses its own output dir
                                  canvas_w_px=canvas_width_px,
                                  canvas_h_px=canvas_height_px,
                                  plot_x_half=plot_x_lim_half,
                                  plot_y_half=plot_y_lim_half,
-                                 sensor_trans=translations,
+                                 sensor_trans=initial_translations, # CLI uses initial translations
                                  colors_sensor=sensor_colors,
                                  fixed_dpi=dpi)
         
@@ -191,6 +295,9 @@ if __name__ == '__main__':
         print(f"Starting parallel processing of {len(chan_files)} files using up to {num_processes_to_use} processes...")
 
         with multiprocessing.Pool(processes=num_processes_to_use) as pool:
-            pool.map(worker_partial, chan_files)
+            results = pool.map(worker_partial, chan_files)
+        
+        processed_count = sum(1 for r in results if r is not None)
+        print(f"Processing complete. {processed_count}/{len(chan_files)} files generated images.")
 
-    print("Processing complete. All .chan files have been processed for canvas output.")
+    print("Original script execution finished.")
