@@ -92,8 +92,8 @@ def main():
         sensor_translations = args.translations
     else:
         sensor_translations = [ # Default translations from index.py or your preference
-            (-7, -2.7 + 0.5), (7, 1.0 + 0.5),
-            (7, -2.7 + 0.5), (-7, 1.0 + 0.5)
+            (-7.0, -2.7 + 0.5), (7.0, 1.0 + 0.5),
+            (7.0, -2.7 + 0.5), (-7.0, 1.0 + 0.5)
         ]
 
     # Common parameters for process_chan_file
