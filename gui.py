@@ -23,7 +23,7 @@ class TranslationGUI:
 
         # Initial translation values from your selection
         self.translations_vars = [
-            tk.DoubleVar(value=-7.5), tk.DoubleVar(value=-5.0),
+            tk.DoubleVar(value=-7.5), tk.DoubleVar(value=-3.7),
             tk.DoubleVar(value=7.5), tk.DoubleVar(value=0.0),
             tk.DoubleVar(value=7.5), tk.DoubleVar(value=0.0),
             tk.DoubleVar(value=-7.5), tk.DoubleVar(value=0.0)
@@ -69,14 +69,24 @@ class TranslationGUI:
         self.controls_frame = ttk.Frame(master)
         self.controls_frame.grid(row=1, column=0, padx=10, pady=(5,10), sticky="ew")
 
-        self.process_first_var = tk.BooleanVar(value=True)
-        self.process_first_check = ttk.Checkbutton(self.controls_frame, text="Process only first .chan file", variable=self.process_first_var)
-        self.process_first_check.pack(side=tk.LEFT, padx=5)
+        # REMOVE Checkbutton for "Process only first .chan file"
+        # self.process_first_var = tk.BooleanVar(value=True)
+        # self.process_first_check = ttk.Checkbutton(self.controls_frame, text="Process only first .chan file", variable=self.process_first_var)
+        # self.process_first_check.pack(side=tk.LEFT, padx=5)
+
+        # ADD Combobox for file selection
+        self.file_selection_label = ttk.Label(self.controls_frame, text="File to Process:")
+        self.file_selection_label.pack(side=tk.LEFT, padx=(5, 2))
+        
+        self.file_selection_var = tk.StringVar()
+        self.file_selection_combo = ttk.Combobox(self.controls_frame, textvariable=self.file_selection_var, width=30)
+        self.file_selection_combo.pack(side=tk.LEFT, padx=(0, 5))
+        self.populate_file_selection_dropdown() # Populate with .chan files
 
         self.process_button = ttk.Button(self.controls_frame, text="Process and View", command=self.process_data)
         self.process_button.pack(side=tk.LEFT, padx=5)
         
-        self.input_dir_label = ttk.Label(self.controls_frame, text=f"Input Dir: {os.path.abspath('.')}") # Show absolute path
+        self.input_dir_label = ttk.Label(self.controls_frame, text=f"Input Dir: {os.path.abspath(script_dir)}") # Use script_dir
         self.input_dir_label.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.image_frame = ttk.LabelFrame(master, text="Output Image")
@@ -101,6 +111,18 @@ class TranslationGUI:
         except tk.TclError: # Handles case where step_val might be non-numeric temporarily
             messagebox.showwarning("Input Error", "Please ensure step value is a valid number.")
 
+    def populate_file_selection_dropdown(self):
+        input_chan_dir = script_dir # Or os.path.abspath('.')
+        try:
+            chan_files = sorted([f for f in os.listdir(input_chan_dir) if f.endswith(".chan")])
+        except FileNotFoundError:
+            chan_files = []
+            messagebox.showwarning("Directory Not Found", f"Input directory for .chan files not found: {input_chan_dir}")
+
+        options = ["Process first .chan file", "Process all .chan files"] + chan_files
+        self.file_selection_combo['values'] = options
+        if options:
+            self.file_selection_combo.current(0) # Default to "Process first"
 
     def process_data(self):
         current_translations_flat = []
@@ -115,26 +137,38 @@ class TranslationGUI:
         for i in range(0, 8, 2):
             current_translations_paired.append((current_translations_flat[i], current_translations_flat[i+1]))
 
-        process_first = self.process_first_var.get()
+        # process_first = self.process_first_var.get() # Old logic
+        selected_option_str = self.file_selection_var.get()
+        
+        # Determine the actual parameter for run_processing_for_gui
+        if selected_option_str == "Process first .chan file":
+            actual_file_selection = "__FIRST__"
+        elif selected_option_str == "Process all .chan files":
+            actual_file_selection = "__ALL__"
+        elif selected_option_str.endswith(".chan"): # A specific file is selected
+            actual_file_selection = selected_option_str
+        else:
+            messagebox.showerror("Selection Error", "Invalid file selection. Please select an option from the dropdown.")
+            return
         
         gui_output_dir = os.path.join(script_dir, "output_pngs_gui") 
         os.makedirs(gui_output_dir, exist_ok=True)
         
-        # Assuming .chan files are in the same directory as the scripts ('.')
-        input_chan_dir = script_dir # Or os.path.abspath('.')
+        input_chan_dir = script_dir 
 
         try:
-            self.master.config(cursor="watch") # Set busy cursor
+            self.master.config(cursor="watch") 
             self.master.update_idletasks()
 
             image_path = ntsec_processor.run_processing_for_gui(
                 translations=current_translations_paired,
-                process_first_file=process_first,
+                # process_first_file=process_first, # Old parameter
+                selected_file_option=actual_file_selection, # New parameter
                 output_directory=gui_output_dir,
                 input_directory=input_chan_dir 
             )
             
-            self.master.config(cursor="") # Reset cursor
+            self.master.config(cursor="")
 
             if image_path and os.path.exists(image_path):
                 self.display_image(image_path)

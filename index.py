@@ -182,10 +182,11 @@ DEFAULT_PLOT_X_LIM_HALF = UNITS_TO_COVER_WIDTH / 2.0
 DEFAULT_PLOT_Y_LIM_HALF = (DEFAULT_CANVAS_HEIGHT_PX * (UNITS_TO_COVER_WIDTH / DEFAULT_CANVAS_WIDTH_PX)) / 2.0
 
 
-def run_processing_for_gui(translations, process_first_file, output_directory, input_directory="."):
+def run_processing_for_gui(translations, selected_file_option, output_directory, input_directory="."):
     """
     Callable function from GUI to process .chan files.
     Returns path to the generated image, or None.
+    `selected_file_option` can be a filename, "__FIRST__", or "__ALL__".
     """
     os.makedirs(output_directory, exist_ok=True)
 
@@ -208,24 +209,41 @@ def run_processing_for_gui(translations, process_first_file, output_directory, i
     
     chan_files.sort() 
 
+    # files_to_process = [] # This was the start of the old block
+    # if process_first_file:
+    #     if chan_files:
+    #         files_to_process = chan_files[:1]
+    # else:
+    #     # For GUI, even if "process all" is implied by unchecking,
+    #     # it's better to process one (e.g., the first) for responsiveness.
+    #     # The user can run the main script for batch processing.
+    #     # However, the request was "可選只做第一個chan file", implying "all" is the alternative.
+    #     # Let's process all sequentially if "process_first_file" is False.
+    #     # The GUI will display the last image generated in this case.
+    #     files_to_process = chan_files
+    #     if len(files_to_process) > 1:
+    #          print(f"Processing all {len(files_to_process)} files sequentially. GUI will show the last image.")
+
+    # NEW LOGIC for files_to_process
     files_to_process = []
-    if process_first_file:
-        if chan_files:
-            files_to_process = chan_files[:1]
-    else:
-        # For GUI, even if "process all" is implied by unchecking,
-        # it's better to process one (e.g., the first) for responsiveness.
-        # The user can run the main script for batch processing.
-        # However, the request was "可選只做第一個chan file", implying "all" is the alternative.
-        # Let's process all sequentially if "process_first_file" is False.
-        # The GUI will display the last image generated in this case.
+    if selected_file_option == "__FIRST__":
+        # chan_files is guaranteed non-empty here due to prior checks
+        files_to_process = chan_files[:1]
+    elif selected_file_option == "__ALL__":
         files_to_process = chan_files
-        if len(files_to_process) > 1:
+        if len(files_to_process) > 1: # This message is good to keep
              print(f"Processing all {len(files_to_process)} files sequentially. GUI will show the last image.")
+    elif selected_file_option in chan_files:
+        files_to_process = [selected_file_option]
+    else:
+        # This case means selected_file_option is not __FIRST__, not __ALL__, and not in chan_files
+        print(f"Error: Invalid file selection or file not found: '{selected_file_option}'.")
+        print(f"Available files: {', '.join(chan_files) if chan_files else 'None'}")
+        return None
 
 
-    if not files_to_process:
-        print("No files selected for processing.")
+    if not files_to_process: # Should be caught by the logic above, but as a safeguard
+        print("No files selected for processing (this may indicate an issue if .chan files exist).")
         return None
 
     last_image_path = None
@@ -244,8 +262,12 @@ def run_processing_for_gui(translations, process_first_file, output_directory, i
         )
         if current_image_path:
             last_image_path = current_image_path
-            if process_first_file: # If only first was requested, and we got an image, break.
-                 break 
+            # The old 'if process_first_file: break' logic is removed.
+            # If only one file is intended (specific file or "__FIRST__"),
+            # files_to_process will have only one item, and the loop runs once.
+            # OLD CODE REMOVED:
+            # if process_first_file: # If only first was requested, and we got an image, break.
+            #      break 
             
     return last_image_path
 
