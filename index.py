@@ -151,8 +151,8 @@ def process_chan_file(filename,
                             sensor_global_x_coords.append(x_global)
                             sensor_global_y_coords.append(y_global)
             
-            if sensor_global_x_coords and sensor_global_y_coords:
-                ax.scatter(sensor_global_x_coords, sensor_global_y_coords, s=1, color=colors_sensor[sensor_idx], marker='.')
+                if sensor_global_x_coords and sensor_global_y_coords:
+                    ax.scatter(sensor_global_x_coords, sensor_global_y_coords, s=1, color=colors_sensor[sensor_idx], marker='.')
     
         ax.set_xlim(-plot_x_half, plot_x_half)
         ax.set_ylim(-plot_y_half, plot_y_half)
