@@ -291,7 +291,7 @@ if __name__ == '__main__':
     initial_translations = [
         (-7.5, -3.7),
         (7.5, 0.0),
-        (7.5, 0.0),
+        (7.5, -3.7),
         (-7.5, 0.0)
     ]
     sensor_colors = DEFAULT_SENSOR_COLORS
