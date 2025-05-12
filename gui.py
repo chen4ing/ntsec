@@ -23,10 +23,10 @@ class TranslationGUI:
 
         # Initial translation values from your selection
         self.translations_vars = [
-            tk.DoubleVar(value=-7.5), tk.DoubleVar(value=-3.7),
-            tk.DoubleVar(value=7.5), tk.DoubleVar(value=0.0),
-            tk.DoubleVar(value=7.5), tk.DoubleVar(value=0.0),
-            tk.DoubleVar(value=-7.5), tk.DoubleVar(value=0.0)
+            tk.DoubleVar(value=-6.7), tk.DoubleVar(value= -2.7+0.7),
+            tk.DoubleVar(value=6.7), tk.DoubleVar(value=1.0+0.7),
+            tk.DoubleVar(value=6.7), tk.DoubleVar(value=-2.7+0.7),
+            tk.DoubleVar(value=-6.7), tk.DoubleVar(value=1.0+0.7)
         ]
         self.steps_vars = [tk.DoubleVar(value=0.1) for _ in range(8)]
 
