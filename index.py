@@ -7,7 +7,69 @@ import os
 import multiprocessing
 from functools import partial
 import imageio # Added for video creation
-# ... any other existing imports ...
+
+import cv2
+import numpy as np
+
+def group_and_draw_circles(img: np.ndarray, x_pct: float, y_pct: float, r: int) -> np.ndarray:
+    """
+    Processes an image by neglecting edge regions and grouping non-white pixels into clusters based on circle overlap.
+    Args:
+        img (np.ndarray): Input OpenCV image (grayscale or BGR).
+        x_pct (float): Percentage of width to neglect on left and right edges (0-100).
+        y_pct (float): Percentage of height to neglect on top and bottom edges (0-100).
+        r (int): Radius of circles to draw and cluster.
+    Returns:
+        np.ndarray: Output image with drawn circles at cluster centroids.
+    """
+    # Make a copy for output
+    output = img.copy()
+    h, w = img.shape[:2]
+    # Compute margins in pixels
+    dx = int(w * x_pct / 100.0)
+    dy = int(h * y_pct / 100.0)
+    x0, x1 = dx, w - dx
+    y0, y1 = dy, h - dy
+    if x1 <= x0 or y1 <= y0:
+        raise ValueError("Neglect percentages too large, resulting in empty region.")
+
+    # Create a binary mask of non-white pixels
+    if img.ndim == 3:
+        # Color image: any channel not white
+        mask = np.any(img != 255, axis=2)
+    else:
+        # Grayscale
+        mask = img < 255
+
+    # Crop the mask to neglect edges
+    mask_crop = mask[y0:y1, x0:x1]
+    # Build full-size mask with neglected edges zeroed
+    mask_full = np.zeros_like(mask)
+    mask_full[y0:y1, x0:x1] = mask_crop
+
+    # Dilate to merge circles of radius r
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*r+1, 2*r+1))
+    mask_dilated = cv2.dilate(mask_full.astype(np.uint8), kernel)
+
+    # Find connected components in the dilated mask
+    num_labels, labels = cv2.connectedComponents(mask_dilated)
+
+    # Ensure output is BGR for drawing colored circles
+    if output.ndim == 2:
+        output = cv2.cvtColor(output, cv2.COLOR_GRAY2BGR)
+
+    # For each component (excluding background), compute centroid and draw circle
+    for label in range(1, num_labels):
+        ys, xs = np.where((labels == label) & mask_full)
+        if xs.size == 0:
+            continue
+        cx = int(xs.mean())
+        cy = int(ys.mean())
+        cv2.circle(output, (cx, cy), r, (0, 0, 255), 2)
+
+    return output
+
+
 
 def parse_data_file(input_path, output_path):
     var_radius = [[] for _ in range(4)]
@@ -83,6 +145,66 @@ def parse_data_file(input_path, output_path):
 
     return frame_radius, frame_angle
 
+# NEW HELPER FUNCTION to draw data of one frame onto an existing ax
+def _draw_frame_on_ax(ax, frame_radii_data, frame_angles_data, sensor_trans, colors_sensor):
+    """
+    Plots data for a single frame (all sensors) onto a given matplotlib Axes object.
+    """
+    for sensor_idx in range(4):
+        sensor_global_x_coords = []
+        sensor_global_y_coords = []
+
+        if sensor_idx < len(frame_radii_data) and \
+           frame_radii_data[sensor_idx] and \
+           sensor_idx < len(frame_angles_data) and \
+           frame_angles_data[sensor_idx]:
+        
+            radii_for_sensor = frame_radii_data[sensor_idx]
+            angles_deg_for_sensor_data = frame_angles_data[sensor_idx] # Renamed to avoid conflict
+            tx, ty = sensor_trans[sensor_idx]
+
+            for r, angle_deg in zip(radii_for_sensor, angles_deg_for_sensor_data):
+                if r <= 15.0: # Assuming this threshold remains
+                    angle_rad = np.deg2rad(angle_deg)
+                    x_local = r * np.sin(angle_rad) 
+                    y_local = r * np.cos(angle_rad)
+                    x_global = x_local + tx
+                    y_global = y_local + ty
+                    sensor_global_x_coords.append(x_global)
+                    sensor_global_y_coords.append(y_global)
+    
+        if sensor_global_x_coords and sensor_global_y_coords:
+            ax.scatter(sensor_global_x_coords, sensor_global_y_coords, s=1, color=colors_sensor[sensor_idx], marker='.')
+
+# NEW FUNCTION to generate an OpenCV-compatible image for one frame
+def frame2opencvIMG(frame_radii_data, 
+                    frame_angles_data, 
+                    canvas_w_px, 
+                    canvas_h_px, 
+                    plot_x_half, 
+                    plot_y_half, 
+                    sensor_trans, 
+                    colors_sensor, 
+                    fixed_dpi):
+    """
+    Generates an image (NumPy array) for a single frame's data.
+    """
+    fig, ax = plt.subplots(figsize=(canvas_w_px / fixed_dpi, canvas_h_px / fixed_dpi), dpi=fixed_dpi)
+    fig.patch.set_facecolor('white')
+
+    _draw_frame_on_ax(ax, frame_radii_data, frame_angles_data, sensor_trans, colors_sensor)
+
+    ax.set_xlim(-plot_x_half, plot_x_half)
+    ax.set_ylim(-plot_y_half, plot_y_half)
+    ax.axis('off') 
+    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+    
+    fig.canvas.draw()
+    image = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    plt.close(fig)
+    return group_and_draw_circles(image,1.0,1.0,20)
+
 # MODIFIED process_chan_file:
 # - Takes output_dir_png as an argument.
 # - Generates filename including translation parameters.
@@ -128,31 +250,8 @@ def process_chan_file(filename,
             current_frame_radii_data = all_frames_radii[frame_idx]
             current_frame_angles_data = all_frames_angles[frame_idx]
 
-            for sensor_idx in range(4):
-                sensor_global_x_coords = []
-                sensor_global_y_coords = []
-
-                if sensor_idx < len(current_frame_radii_data) and \
-                   current_frame_radii_data[sensor_idx] and \
-                   sensor_idx < len(current_frame_angles_data) and \
-                   current_frame_angles_data[sensor_idx]:
-                
-                    radii_for_sensor = current_frame_radii_data[sensor_idx]
-                    angles_deg_for_sensor = current_frame_angles_data[sensor_idx]
-                    tx, ty = sensor_trans[sensor_idx]
-
-                    for r, angle_deg in zip(radii_for_sensor, angles_deg_for_sensor):
-                        if r <= 15.0:
-                            angle_rad = np.deg2rad(angle_deg)
-                            x_local = r * np.sin(angle_rad) 
-                            y_local = r * np.cos(angle_rad)
-                            x_global = x_local + tx
-                            y_global = y_local + ty
-                            sensor_global_x_coords.append(x_global)
-                            sensor_global_y_coords.append(y_global)
-            
-                if sensor_global_x_coords and sensor_global_y_coords:
-                    ax.scatter(sensor_global_x_coords, sensor_global_y_coords, s=1, color=colors_sensor[sensor_idx], marker='.')
+            # Call the helper to draw on the existing ax
+            _draw_frame_on_ax(ax, current_frame_radii_data, current_frame_angles_data, sensor_trans, colors_sensor)
     
         ax.set_xlim(-plot_x_half, plot_x_half)
         ax.set_ylim(-plot_y_half, plot_y_half)
@@ -178,51 +277,24 @@ def process_chan_file(filename,
         print(f"Generating {total_data_frames} frames for video from {filename}...")
 
         for frame_idx in range(total_data_frames):
-            fig, ax = plt.subplots(figsize=(canvas_w_px / fixed_dpi, canvas_h_px / fixed_dpi), dpi=fixed_dpi)
-            fig.patch.set_facecolor('white')
-            
             current_frame_radii_data = all_frames_radii[frame_idx]
             current_frame_angles_data = all_frames_angles[frame_idx]
-
-            for sensor_idx in range(4):
-                sensor_global_x_coords = []
-                sensor_global_y_coords = []
-                if sensor_idx < len(current_frame_radii_data) and \
-                   current_frame_radii_data[sensor_idx] and \
-                   sensor_idx < len(current_frame_angles_data) and \
-                   current_frame_angles_data[sensor_idx]:
-                    
-                    radii_for_sensor = current_frame_radii_data[sensor_idx]
-                    angles_deg_for_sensor = current_frame_angles_data[sensor_idx]
-                    tx, ty = sensor_trans[sensor_idx]
-
-                    for r, angle_deg in zip(radii_for_sensor, angles_deg_for_sensor):
-                        if r <= 15.0:
-                            angle_rad = np.deg2rad(angle_deg)
-                            x_local = r * np.sin(angle_rad) 
-                            y_local = r * np.cos(angle_rad)
-                            x_global = x_local + tx
-                            y_global = y_local + ty
-                            sensor_global_x_coords.append(x_global)
-                            sensor_global_y_coords.append(y_global)
-                    
-                    if sensor_global_x_coords and sensor_global_y_coords:
-                        ax.scatter(sensor_global_x_coords, sensor_global_y_coords, s=1, color=colors_sensor[sensor_idx], marker='.')
             
-            ax.set_xlim(-plot_x_half, plot_x_half)
-            ax.set_ylim(-plot_y_half, plot_y_half)
-            ax.axis('off')
-            plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
-            
-            fig.canvas.draw()
-            image = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-            image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            # Call frame2opencvIMG to get the image for the current frame
+            image = frame2opencvIMG(current_frame_radii_data,
+                                    current_frame_angles_data,
+                                    canvas_w_px,
+                                    canvas_h_px,
+                                    plot_x_half,
+                                    plot_y_half,
+                                    sensor_trans,
+                                    colors_sensor,
+                                    fixed_dpi)
             image_frames.append(image)
-            plt.close(fig)
             
             # Progress indicator
             print(f"  Processed frame {frame_idx + 1}/{total_data_frames}", end='\\r')
-        print("\\nVideo frames generated.")
+        print("\\nVideo frames generated.") # Original had \\n, keeping consistent for now. Consider changing to \n.
         return image_frames
 
 # --- Add these constants and the new function before your `if __name__ == '__main__':` block ---
