@@ -67,6 +67,13 @@ def group_and_draw_circles(img: np.ndarray, x_pct: float, y_pct: float, r: int) 
         cy = int(ys.mean())
         cv2.circle(output, (cx, cy), r, (0, 0, 255), 2)
 
+    # Save a debug PNG of the output image for inspection
+    debug_dir = "debug_pngs"
+    os.makedirs(debug_dir, exist_ok=True)
+    debug_path = os.path.join(debug_dir, "grouped_circles_debug.png")
+    cv2.imwrite(debug_path, output)
+    print(f"Debug PNG saved to {debug_path}")
+
     return output
 
 
