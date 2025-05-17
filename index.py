@@ -22,6 +22,7 @@ def group_and_draw_circles(img: np.ndarray, x_pct: float, y_pct: float, r: int) 
     Returns:
         np.ndarray: Output image with drawn circles at cluster centroids.
     """
+    #print("這有在跑嗎?")
     # Make a copy for output
     output = img.copy()
     h, w = img.shape[:2]
@@ -68,11 +69,11 @@ def group_and_draw_circles(img: np.ndarray, x_pct: float, y_pct: float, r: int) 
         cv2.circle(output, (cx, cy), r, (0, 0, 255), 2)
 
     # Save a debug PNG of the output image for inspection
-    debug_dir = "debug_pngs"
-    os.makedirs(debug_dir, exist_ok=True)
-    debug_path = os.path.join(debug_dir, "grouped_circles_debug.png")
-    cv2.imwrite(debug_path, output)
-    print(f"Debug PNG saved to {debug_path}")
+    # debug_dir = "debug_pngs"
+    # os.makedirs(debug_dir, exist_ok=True)
+    # debug_path = os.path.join(debug_dir, "grouped_circles_debug.png")
+    # cv2.imwrite(debug_path, output)
+    # print(f"Debug PNG saved to {debug_path}")
 
     return output
 
@@ -210,7 +211,7 @@ def frame2opencvIMG(frame_radii_data,
     image = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
     image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
     plt.close(fig)
-    return group_and_draw_circles(image,1.0,1.0,20)
+    return group_and_draw_circles(image,5.0,5.0,20)
 
 # MODIFIED process_chan_file:
 # - Takes output_dir_png as an argument.
