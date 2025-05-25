@@ -105,7 +105,9 @@ def frame2opencvIMG(frame_radii_data, frame_angles_data,
                 # Draw a small circle for each point (radius=1 for small dots)
                 cv2.circle(image, (x_pixel, y_pixel), 1, color_bgr, -1)
 
-    return group_and_draw_circles(image, 5.0, 5.0, 20)
+    return group_and_draw_circles(image, 5.0, 5.0, 55)
+    # ==============這裡是參數，很重要，55那個值如果調成20會顯示雙腳，55會是是當人的肚子的腰圍=========================
+    # 5.0、5.0 是 邊界 margin 的百分比
 
 # ───────────────────  PARAM STUB  ───────────────────────────────
 def onSetupParameters(scriptOp):
