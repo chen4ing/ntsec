@@ -1,6 +1,52 @@
 # me  –  Script TOP DAT (full, standalone, your variable names)
 import math, cv2, numpy as np
+
+# ========================參數=========================
+prams_visual_debug = False
+human_circle_fill = True
+
 # ───────────────────  HELPERS  ──────────────────────────────────
+def process_image_white_BG_2_black_BG(img):
+    """
+    Processes an OpenCV image with alpha channel:
+    - Converts non-black/non-white pixels to white.
+    - Inverts black to white and white to black.
+    
+    Parameters:
+        img (numpy.ndarray): Input image (BGRA format).
+        
+    Returns:
+        numpy.ndarray: Processed image (BGRA format).
+    """
+    if img.shape[2] != 4:
+        raise ValueError("Input image must have 4 channels (BGRA).")
+
+    # Extract BGR only (ignore alpha for color logic)
+    bgr = img[:, :, :3]
+
+    # Create masks for black and white
+    black_mask = np.all(bgr == [0, 0, 0], axis=-1)
+    white_mask = np.all(bgr == [255, 255, 255], axis=-1)
+
+    # Mask for all other colors
+    other_mask = ~(black_mask | white_mask)
+
+    # Set non-black/white pixels to white
+    img[other_mask] = [255, 255, 255, img[other_mask][:, 3]]
+
+    # Recalculate masks after setting other colors to white
+    bgr = img[:, :, :3]
+    black_mask = np.all(bgr == [0, 0, 0], axis=-1)
+    white_mask = np.all(bgr == [255, 255, 255], axis=-1)
+
+    # Invert black to white
+    img[black_mask] = [255, 255, 255, img[black_mask][:, 3]]
+    # Invert white to black
+    img[white_mask] = [0, 0, 0, img[white_mask][:, 3]]
+
+    return img
+
+
 def group_and_draw_circles(img: np.ndarray, x_pct: float, y_pct: float, r: int) -> np.ndarray:
     h, w  = img.shape[:2]
     dx, dy = int(w*x_pct/100), int(h*y_pct/100)
@@ -13,8 +59,18 @@ def group_and_draw_circles(img: np.ndarray, x_pct: float, y_pct: float, r: int) 
     for lab in range(1, labels.max()+1):
         ys, xs = np.where((labels == lab) & mask_full)
         if xs.size:
-            cv2.circle(out, (int(xs.mean()), int(ys.mean())), r, (0, 0, 255), 2)
-    return out
+            fill_config = 2 # default circle edge px
+            if human_circle_fill:
+                fill_config = -1
+            else:
+                fill_config = 2
+            cv2.circle(out, (int(xs.mean()), int(ys.mean())), r, _get_color_bgr('black'),fill_config)#(0, 0, 255), 2)
+            # ^^^^^^^^^^^^^^^^^^ 這是五月底才調整的，原本不是黑色，我後來調成黑色
+    #return out
+    if prams_visual_debug:
+        return out
+    else: 
+        return process_image_white_BG_2_black_BG(out)
 
 #def _draw_frame_on_ax(ax, radii_frame, angles_frame, sensor_trans, colors_sensor):
 def _process_sensor_data(radii_frame, angles_frame, sensor_trans):
@@ -106,7 +162,7 @@ def frame2opencvIMG(frame_radii_data, frame_angles_data,
                 cv2.circle(image, (x_pixel, y_pixel), 1, color_bgr, -1)
 
     return group_and_draw_circles(image, 5.0, 5.0, 55)
-    # ==============這裡是參數，很重要，55那個值如果調成20會顯示雙腳，55會是是當人的肚子的腰圍=========================
+    # ==============這裡是參數，很重要，55那個值如果調成20會顯示雙腳，55會是人的肚子的腰圍=========================
     # 5.0、5.0 是 邊界 margin 的百分比
 
 # ───────────────────  PARAM STUB  ───────────────────────────────
