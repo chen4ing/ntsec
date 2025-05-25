@@ -6,6 +6,25 @@ prams_visual_debug = False
 human_circle_fill = True
 
 # ───────────────────  HELPERS  ──────────────────────────────────
+def flip_image_both_axes(img: np.ndarray) -> np.ndarray:
+    """
+    水平翻轉且垂直翻轉一張 OpenCV 圖像（含 alpha 通道）
+
+    Parameters:
+        img (np.ndarray): 具有 alpha channel 的 OpenCV 圖像 (通常是 BGRA)
+
+    Returns:
+        np.ndarray: 翻轉後的圖像
+    """
+    if img is None:
+        raise ValueError("輸入圖像為 None")
+    if img.shape[2] != 4:
+        raise ValueError("輸入圖像需包含 alpha channel（通道數應為 4）")
+
+    # 同時水平與垂直翻轉，flipCode = -1
+    flipped = cv2.flip(img, -1)
+    return flipped
+
 def process_image_white_BG_2_black_BG(img):
     """
     Processes an OpenCV image with alpha channel:
@@ -67,10 +86,11 @@ def group_and_draw_circles(img: np.ndarray, x_pct: float, y_pct: float, r: int) 
             cv2.circle(out, (int(xs.mean()), int(ys.mean())), r, _get_color_bgr('black'),fill_config)#(0, 0, 255), 2)
             # ^^^^^^^^^^^^^^^^^^ 這是五月底才調整的，原本不是黑色，我後來調成黑色
     #return out
+    out_and_flip=flip_image_both_axes(out)
     if prams_visual_debug:
-        return out
+        return out_and_flip
     else: 
-        return process_image_white_BG_2_black_BG(out)
+        return process_image_white_BG_2_black_BG(out_and_flip)
 
 #def _draw_frame_on_ax(ax, radii_frame, angles_frame, sensor_trans, colors_sensor):
 def _process_sensor_data(radii_frame, angles_frame, sensor_trans):
