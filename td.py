@@ -192,22 +192,33 @@ def onSetupParameters(scriptOp):
 
 # ───────────────────  MAIN COOK  ────────────────────────────────
 def onCook(scriptOp):
+    
+    chop = op('script_chop1')
+    r_vals_1 = chop['radius1'].vals  # numpy array	
+    r_vals_2 = chop['radius2'].vals
+    r_vals_3 = chop['radius3'].vals
+    r_vals_4 = chop['radius4'].vals
+    a_vals_1 = chop['angle1'].vals
+    a_vals_2  = chop['angle2'].vals
+    a_vals_3  = chop['angle3'].vals
+    a_vals_4  = chop['angle4'].vals
+    
     # 1️⃣  逐支感測器抓資料 —— 你要的變數名稱
-    chop = op('hokuyo1')
-    r_vals_1 = chop['radius'].vals
-    a_vals_1 = chop['angle'].vals
+    #chop = op('hokuyo1')
+    #r_vals_1 = chop['radius'].vals
+    #a_vals_1 = chop['angle'].vals
 
-    chop = op('hokuyo2')
-    r_vals_2 = chop['radius'].vals
-    a_vals_2 = chop['angle'].vals
+    #chop = op('hokuyo2')
+    #r_vals_2 = chop['radius'].vals
+    #a_vals_2 = chop['angle'].vals
 
-    chop = op('hokuyo3')
-    r_vals_3 = chop['radius'].vals
-    a_vals_3 = chop['angle'].vals
+    #chop = op('hokuyo3')
+    #r_vals_3 = chop['radius'].vals
+    #a_vals_3 = chop['angle'].vals
 
-    chop = op('hokuyo4')
-    r_vals_4 = chop['radius'].vals
-    a_vals_4 = chop['angle'].vals
+    #chop = op('hokuyo4')
+    #r_vals_4 = chop['radius'].vals
+    #a_vals_4 = chop['angle'].vals
 
     # 2️⃣  把四組資料組成函式需要的 list
     radii_frame  = [r_vals_1, r_vals_2, r_vals_3, r_vals_4]
