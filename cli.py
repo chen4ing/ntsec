@@ -159,9 +159,5 @@ def main():
         print("Video processing complete.")
 
 if __name__ == '__main__':
-    # Ensure matplotlib does not try to use GUI backend in multiprocessing
-    # This might be needed on some systems, especially if run from environments
-    # where a GUI backend might be implicitly selected.
-    import matplotlib
-    matplotlib.use('Agg') 
+    # No matplotlib dependency - using pure OpenCV implementation
     main()

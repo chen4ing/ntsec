@@ -1,15 +1,12 @@
 # index.py (Additions/Modifications)
 
-# Make sure these imports are present at the top of index.py
-import matplotlib.pyplot as plt
+# Pure OpenCV and numpy implementation - no matplotlib dependency
 import numpy as np
 import os
 import multiprocessing
 from functools import partial
 import imageio # Added for video creation
-
 import cv2
-import numpy as np
 
 def group_and_draw_circles(img: np.ndarray, x_pct: float, y_pct: float, r: int) -> np.ndarray:
     """
@@ -153,11 +150,14 @@ def parse_data_file(input_path, output_path):
 
     return frame_radius, frame_angle
 
-# NEW HELPER FUNCTION to draw data of one frame onto an existing ax
-def _draw_frame_on_ax(ax, frame_radii_data, frame_angles_data, sensor_trans, colors_sensor):
+# NEW HELPER FUNCTION to process sensor data for drawing
+def _process_sensor_data(frame_radii_data, frame_angles_data, sensor_trans):
     """
-    Plots data for a single frame (all sensors) onto a given matplotlib Axes object.
+    Process sensor data and return global coordinates for all sensors.
+    Returns a list of (x_coords, y_coords) for each sensor.
     """
+    sensor_coords = []
+    
     for sensor_idx in range(4):
         sensor_global_x_coords = []
         sensor_global_y_coords = []
@@ -168,11 +168,11 @@ def _draw_frame_on_ax(ax, frame_radii_data, frame_angles_data, sensor_trans, col
            frame_angles_data[sensor_idx]:
         
             radii_for_sensor = frame_radii_data[sensor_idx]
-            angles_deg_for_sensor_data = frame_angles_data[sensor_idx] # Renamed to avoid conflict
+            angles_deg_for_sensor_data = frame_angles_data[sensor_idx]
             tx, ty = sensor_trans[sensor_idx]
 
             for r, angle_deg in zip(radii_for_sensor, angles_deg_for_sensor_data):
-                if r <= 15.0: # Assuming this threshold remains
+                if r <= 15.0: # Distance threshold
                     angle_rad = np.deg2rad(angle_deg)
                     x_local = r * np.sin(angle_rad) 
                     y_local = r * np.cos(angle_rad)
@@ -180,11 +180,44 @@ def _draw_frame_on_ax(ax, frame_radii_data, frame_angles_data, sensor_trans, col
                     y_global = y_local + ty
                     sensor_global_x_coords.append(x_global)
                     sensor_global_y_coords.append(y_global)
+        
+        sensor_coords.append((sensor_global_x_coords, sensor_global_y_coords))
     
-        if sensor_global_x_coords and sensor_global_y_coords:
-            ax.scatter(sensor_global_x_coords, sensor_global_y_coords, s=1, color=colors_sensor[sensor_idx], marker='.')
+    return sensor_coords
 
-# NEW FUNCTION to generate an OpenCV-compatible image for one frame
+def _world_to_pixel(x_world, y_world, canvas_w_px, canvas_h_px, plot_x_half, plot_y_half):
+    """
+    Convert world coordinates to pixel coordinates.
+    """
+    # Normalize world coordinates to [0, 1]
+    x_norm = (x_world + plot_x_half) / (2 * plot_x_half)
+    y_norm = (y_world + plot_y_half) / (2 * plot_y_half)
+    
+    # Convert to pixel coordinates (note: y is flipped for image coordinates)
+    x_pixel = int(x_norm * canvas_w_px)
+    y_pixel = int((1 - y_norm) * canvas_h_px)  # Flip y-axis
+    
+    # Clamp to valid pixel range
+    x_pixel = max(0, min(canvas_w_px - 1, x_pixel))
+    y_pixel = max(0, min(canvas_h_px - 1, y_pixel))
+    
+    return x_pixel, y_pixel
+
+def _get_color_bgr(color_name):
+    """
+    Convert color name to BGR tuple for OpenCV.
+    """
+    color_map = {
+        'red': (0, 0, 255),
+        'green': (0, 255, 0),
+        'blue': (255, 0, 0),
+        'purple': (128, 0, 128),
+        'black': (0, 0, 0),
+        'white': (255, 255, 255)
+    }
+    return color_map.get(color_name, (0, 0, 0))  # Default to black
+
+# NEW FUNCTION to generate an OpenCV image for one frame
 def frame2opencvIMG(frame_radii_data, 
                     frame_angles_data, 
                     canvas_w_px, 
@@ -195,23 +228,25 @@ def frame2opencvIMG(frame_radii_data,
                     colors_sensor, 
                     fixed_dpi):
     """
-    Generates an image (NumPy array) for a single frame's data.
+    Generates an image (NumPy array) for a single frame's data using pure OpenCV.
     """
-    fig, ax = plt.subplots(figsize=(canvas_w_px / fixed_dpi, canvas_h_px / fixed_dpi), dpi=fixed_dpi)
-    fig.patch.set_facecolor('white')
-
-    _draw_frame_on_ax(ax, frame_radii_data, frame_angles_data, sensor_trans, colors_sensor)
-
-    ax.set_xlim(-plot_x_half, plot_x_half)
-    ax.set_ylim(-plot_y_half, plot_y_half)
-    ax.axis('off') 
-    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+    # Create white background image
+    image = np.full((canvas_h_px, canvas_w_px, 3), 255, dtype=np.uint8)
     
-    fig.canvas.draw()
-    image = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    plt.close(fig)
-    return group_and_draw_circles(image,5.0,5.0,20)
+    # Process sensor data to get coordinates
+    sensor_coords = _process_sensor_data(frame_radii_data, frame_angles_data, sensor_trans)
+    
+    # Draw points for each sensor
+    for sensor_idx, (x_coords, y_coords) in enumerate(sensor_coords):
+        if x_coords and y_coords:
+            color_bgr = _get_color_bgr(colors_sensor[sensor_idx])
+            
+            for x_world, y_world in zip(x_coords, y_coords):
+                x_pixel, y_pixel = _world_to_pixel(x_world, y_world, canvas_w_px, canvas_h_px, plot_x_half, plot_y_half)
+                # Draw a small circle for each point (radius=1 for small dots)
+                cv2.circle(image, (x_pixel, y_pixel), 1, color_bgr, -1)
+    
+    return group_and_draw_circles(image, 5.0, 5.0, 20)
 
 # MODIFIED process_chan_file:
 # - Takes output_dir_png as an argument.
@@ -251,32 +286,36 @@ def process_chan_file(filename,
     trans_filename_part = "_".join(trans_str_parts)
 
     if mode == 'png':
-        fig, ax = plt.subplots(figsize=(canvas_w_px / fixed_dpi, canvas_h_px / fixed_dpi), dpi=fixed_dpi)
-        fig.patch.set_facecolor('white')
-
+        # Create white background image
+        image = np.full((canvas_h_px, canvas_w_px, 3), 255, dtype=np.uint8)
+        
+        # Process all frames and overlay them on the same image
         for frame_idx in range(len(all_frames_radii)):
             current_frame_radii_data = all_frames_radii[frame_idx]
             current_frame_angles_data = all_frames_angles[frame_idx]
 
-            # Call the helper to draw on the existing ax
-            _draw_frame_on_ax(ax, current_frame_radii_data, current_frame_angles_data, sensor_trans, colors_sensor)
-    
-        ax.set_xlim(-plot_x_half, plot_x_half)
-        ax.set_ylim(-plot_y_half, plot_y_half)
-        ax.axis('off') 
-        plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+            # Process sensor data to get coordinates
+            sensor_coords = _process_sensor_data(current_frame_radii_data, current_frame_angles_data, sensor_trans)
+            
+            # Draw points for each sensor
+            for sensor_idx, (x_coords, y_coords) in enumerate(sensor_coords):
+                if x_coords and y_coords:
+                    color_bgr = _get_color_bgr(colors_sensor[sensor_idx])
+                    
+                    for x_world, y_world in zip(x_coords, y_coords):
+                        x_pixel, y_pixel = _world_to_pixel(x_world, y_world, canvas_w_px, canvas_h_px, plot_x_half, plot_y_half)
+                        # Draw a small circle for each point (radius=1 for small dots)
+                        cv2.circle(image, (x_pixel, y_pixel), 1, color_bgr, -1)
         
         output_png_filename = os.path.join(output_dir, f'{base_filename}_params_{trans_filename_part}_canvas.png')
         
         try:
-            plt.savefig(output_png_filename, dpi=fixed_dpi, facecolor=fig.get_facecolor()) 
+            cv2.imwrite(output_png_filename, image)
             print(f"Canvas plot saved to {output_png_filename}")
         except Exception as e:
             print(f"Error saving plot {output_png_filename}: {e}")
-            plt.close(fig)
             return None
         
-        plt.close(fig)
         return output_png_filename
     
     elif mode == 'video_frames':
