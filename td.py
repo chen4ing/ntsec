@@ -6,64 +6,59 @@ prams_visual_debug = False
 human_circle_fill = True
 
 # ───────────────────  HELPERS  ──────────────────────────────────
+
 def flip_image_both_axes(img: np.ndarray) -> np.ndarray:
     """
-    水平翻轉且垂直翻轉一張 OpenCV 圖像（含 alpha 通道）
+    對一張 BGR 圖像進行水平與垂直翻轉（不含 alpha 通道）
 
     Parameters:
-        img (np.ndarray): 具有 alpha channel 的 OpenCV 圖像 (通常是 BGRA)
+        img (np.ndarray): 3 通道 BGR 格式的 OpenCV 圖像
 
     Returns:
         np.ndarray: 翻轉後的圖像
     """
     if img is None:
         raise ValueError("輸入圖像為 None")
-    if img.shape[2] != 4:
-        raise ValueError("輸入圖像需包含 alpha channel（通道數應為 4）")
+    if img.ndim != 3 or img.shape[2] != 3:
+        raise ValueError("輸入圖像需為 BGR 格式（三通道）")
 
-    # 同時水平與垂直翻轉，flipCode = -1
-    flipped = cv2.flip(img, -1)
-    return flipped
-
-def process_image_white_BG_2_black_BG(img):
+    # flipCode = -1 表示水平 + 垂直翻轉
+    return cv2.flip(img, -1)
+def process_image_white_BG_2_black_BG(img: np.ndarray) -> np.ndarray:
     """
-    Processes an OpenCV image with alpha channel:
-    - Converts non-black/non-white pixels to white.
-    - Inverts black to white and white to black.
-    
+    處理不含 alpha 的 BGR 圖像：
+    - 將非黑非白像素設為白色
+    - 黑色變白色，白色變黑色
+
     Parameters:
-        img (numpy.ndarray): Input image (BGRA format).
-        
+        img (np.ndarray): 3 通道 BGR 圖像
+
     Returns:
-        numpy.ndarray: Processed image (BGRA format).
+        np.ndarray: 處理後的圖像
     """
-    if img.shape[2] != 4:
-        raise ValueError("Input image must have 4 channels (BGRA).")
+    if img.ndim != 3 or img.shape[2] != 3:
+        raise ValueError("輸入圖像需為 BGR 格式（三通道）")
 
-    # Extract BGR only (ignore alpha for color logic)
-    bgr = img[:, :, :3]
+    bgr = img.copy()
 
-    # Create masks for black and white
+    # 建立黑與白的遮罩
     black_mask = np.all(bgr == [0, 0, 0], axis=-1)
     white_mask = np.all(bgr == [255, 255, 255], axis=-1)
-
-    # Mask for all other colors
     other_mask = ~(black_mask | white_mask)
 
-    # Set non-black/white pixels to white
-    img[other_mask] = [255, 255, 255, img[other_mask][:, 3]]
+    # 將非黑非白像素設為白色
+    bgr[other_mask] = [255, 255, 255]
 
-    # Recalculate masks after setting other colors to white
-    bgr = img[:, :, :3]
+    # 更新遮罩
     black_mask = np.all(bgr == [0, 0, 0], axis=-1)
     white_mask = np.all(bgr == [255, 255, 255], axis=-1)
 
-    # Invert black to white
-    img[black_mask] = [255, 255, 255, img[black_mask][:, 3]]
-    # Invert white to black
-    img[white_mask] = [0, 0, 0, img[white_mask][:, 3]]
+    # 黑白反轉
+    bgr[black_mask] = [255, 255, 255]
+    bgr[white_mask] = [0, 0, 0]
 
-    return img
+    return bgr
+
 
 
 def group_and_draw_circles(img: np.ndarray, x_pct: float, y_pct: float, r: int) -> np.ndarray:
