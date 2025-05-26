@@ -4,6 +4,9 @@ import json
 import cv2
 import numpy as np
 
+# Global variable to store previous circle positions
+previous_circles = []
+
 # ===== 圓形偵測 =====
 # ===== 圓形偵測（最終版，兼容舊版 TD） =====
 def detect_circles(top_name='null1'):
@@ -42,6 +45,48 @@ def detect_circles(top_name='null1'):
             pts.append([x / w, y / h])           # 0~1 正規化
     return pts
 
+# Function to track circles and calculate movement
+def track_circles(new_circles):
+    global previous_circles
+    result = []
+    
+    if not previous_circles:
+        # First detection - no movement data yet
+        for pos in new_circles:
+            result.append({"pos": pos, "movement": [0, 0]})
+    else:
+        # Match new circles with previous ones based on proximity
+        matched_indices = []
+        
+        for pos in new_circles:
+            best_match = None
+            min_distance = float('inf')
+            matched_idx = -1
+            
+            # Find the closest previous circle
+            for i, prev_pos in enumerate(previous_circles):
+                if i in matched_indices:
+                    continue  # Skip already matched points
+                
+                # Calculate Euclidean distance
+                dist = np.sqrt((pos[0] - prev_pos[0])**2 + (pos[1] - prev_pos[1])**2)
+                if dist < min_distance and dist < 0.1:  # Threshold for matching
+                    min_distance = dist
+                    best_match = prev_pos
+                    matched_idx = i
+            
+            if best_match is not None:
+                # Calculate movement vector
+                movement = [pos[0] - best_match[0], pos[1] - best_match[1]]
+                result.append({"pos": pos, "movement": movement})
+                matched_indices.append(matched_idx)
+            else:
+                # New circle with no match
+                result.append({"pos": pos, "movement": [0, 0]})
+    
+    # Update previous circles for next detection
+    previous_circles = new_circles.copy()
+    return result
 
 # ===== HTTP (保持原本功能) =====
 def onHTTPRequest(webServerDAT, request, response):
@@ -62,7 +107,8 @@ def onWebSocketReceiveText(webServerDAT, client, data):
     msg = data.strip().lower()
     if msg == 'detect':                          # 客戶端固定送 detect
         pts = detect_circles()                   # [[nx, ny], ...]
-        webServerDAT.webSocketSendText(client, json.dumps(pts))
+        tracked_circles = track_circles(pts)     # Track circles and calculate movement
+        webServerDAT.webSocketSendText(client, json.dumps(tracked_circles))
     else:
         # 其他訊息照原樣回傳
         webServerDAT.webSocketSendText(client, data)
